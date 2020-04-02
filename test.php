@@ -1,0 +1,216 @@
+<?php
+    $intOnly = false;
+    $intFileGiven = false;
+    $intFile = "./interpret.py";
+
+    $parseOnly = false;
+    $parseFileGiven = false;
+    $parseFile = "./parse.php";
+
+    $recursive = false;
+    $testDirGiven = false;
+    $testDir = "./";
+
+    $jexamxmlFileGiven = false;
+    $jexamxmlFile = "/pub/courses/ipp/jexamxml/jexamxml.jar";
+
+    $testsCount = 0;
+    $testsFailed = 0;
+    $testsPassed = 0;
+
+    // ### Errors
+    $wrongParamErr = 10;
+    $inputFileErr = 11;
+    $outputFileErr = 12;
+    // ##########
+
+    function err_msg($message, $rc){
+        fwrite(STDERR, "Error: $message\n");
+        exit($rc);
+    }
+
+    function rglob($testDir){
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($testDir));
+        $testFiles = array();
+        foreach ($iterator as $file) {
+            if (preg_match("/.*\.src$/",$file)) {
+                $testFiles[] = $file->getPathname();
+            }
+        }
+        return $testFiles;
+    }
+
+    function parse_only($testName){
+        global $parseFile;
+
+        exec("php7.4 $parseFile < $testName.src > $testName.xml_out", $parseOut, $parseRC);
+        echo ($parseRC);
+    }
+
+    $longopts  = array(
+        "help",    
+        "directory:",   
+        "recursive",       
+        "parse-script:",          
+        "int-script:",
+        "parse-only",
+        "int-only",
+        "jexamxml:"
+    );
+
+    // Checking name of every argument
+    foreach ($argv as $i => $arg){
+        if ($i < 1) continue;   // Skip name of the script
+        if (preg_match( '/--directory=.+/', $arg) );
+        else if (preg_match( '/--help$/', $arg) );
+        else if (preg_match( '/--recursive$/', $arg) );
+        else if (preg_match( '/--parse-script=.+/', $arg) );
+        else if (preg_match( '/--parse-only$/', $arg) );
+        else if (preg_match( '/--int-script=.+/', $arg) );
+        else if (preg_match( '/--int-only$/', $arg) );
+        else if (preg_match( '/--jexamxml=.+/', $arg) );
+        else {
+            err_msg("Unknown option", $wrongParamErr);
+        }
+    }
+
+    $myArgs = getopt("", $longopts);
+
+    if (array_search("--help", $argv)){
+        if (count($argv) == 2){
+            echo "USAGE: php7.4 test.php [OPTIONS]\n\n";
+            echo "DESCRIPTION:    ";
+            echo "Test.php script is testing modules (default = interpret.py and parse.php)
+                by running them with some src files, and comparing their results with
+                referencing ones.
+                When the comparison is done, the index.html is created as an output.\n";
+            echo "OPTIONS:\n";
+            echo "      --help               Prints short help for this script\n";
+            echo "      --directory=<dir>    Directory where the reference test results are stored (If not given, ./ is used)\n";
+            echo "      --recursive          Look for the test recursively inside of 'directory' file\n";
+            echo "      --parse-script=<file>   Name of the parsing script (If not given, parse.php is used)\n";
+            echo "      --int-script=<file>   Name of the interpret script (If not given, interpret.py is used)\n";
+            echo "      --parse-only         Test only parsing script (If --int* opt is given with this one, it will end with error)\n";
+            echo "      --int-only           Test only interpret script (If --parse* opt is given with this one, it will end with error)\n";
+            echo "      --jexamxml=<file>    Name of the JAR file with A7Soft JExamXML. (Default /pub/courses/ipp/jexamxml/jexamxml.jar)\n";
+            exit(0);
+        }
+        else {
+            return err_msg("--help cannot take any more arguments.", $wrongParamErr);
+        }
+    }
+    
+    /* ############                CHECKING ARGUMENTS              ##############*/
+
+    foreach ($argv as $i => $arg)
+    {
+        if ($i < 1) continue;   // Skip name of the script
+        $option = explode('=',$arg)[0];
+        switch ($option){
+            case "--directory":
+                $testDirGiven = true;
+                $testDir = $myArgs["directory"];
+                break;
+            case "--recursive":
+                $recursive = true;
+                break;
+            case "--parse-script":
+                $parseFileGiven = true;
+                $parseFile = $myArgs["parse-script"];
+                break;
+            case "--int-script":
+                $intFileGiven = true;
+                $intFile = $myArgs["int-script"];
+                break;
+            case "--parse-only":
+                $parseOnly = true;
+                break;
+            case "--int-only":
+                $intOnly = true;
+                break;
+            case "--jexamxlm":
+                $jexamxmlFileGiven = true;
+                $jexamxmlFile = $myArgs["jexamxml"];
+                break;
+            default:
+                err_msg("Unknown option", $wrongParamErr);
+        }
+    }
+
+    if ($intOnly && $parseOnly)
+        err_msg("--int-only and --parse-only options can't be together", $wrongParamErr);
+
+    if ($parseOnly && $intFileGiven)
+        err_msg("--parse-only and --int-script options can't be together", $wrongParamErr);
+    
+    if ($intOnly && $parseFileGiven)
+        err_msg("--int-only and --parse-script options can't be together", $wrongParamErr);
+    
+
+    if ($testDirGiven){
+        $testDir = exec("realpath \"$testDir\"")."/";
+        if (!is_dir($testDir))
+            err_msg("--directory=<dir> is not a directory", $inputFileErr);
+    }
+    
+    if ($parseFileGiven){
+        $parseFile = exec("realpath \"$parseFile\"")."/";
+        if (!is_file($parseFile))
+            err_msg("--parse-script=<file> is not a file", $inputFileErr);
+    }
+
+    if ($intFileGiven){
+        $intFile = exec("realpath \"$intFile\"")."/";
+        if (!is_file($intFile))
+            err_msg("--int-script=<file> is not a file", $inputFileErr);
+    }
+
+    /* ############               END OF CHECKING ARGUMENTS            ##############*/
+
+    if($recursive)
+    {
+        $testFiles = rglob($testDir);
+    }
+    else
+    {
+        $testFiles = glob($testDir . "*.src");
+    }
+    
+
+    /* ############               CREATE MISSING .in/.out/.rc  FILES            ##############*/
+
+    foreach ($testFiles as $testFile) {
+        $testsCount++;
+
+        $testName = str_replace(".src", "", $testFile);
+    
+        if (!file_exists("$testName.in")) {
+            if (file_put_contents("$testName.in", "") === false)
+                err_msg("Couldn't create a file", $outputFileErr);
+        }
+        if (!file_exists("$testName.rc")) {
+            if (file_put_contents("$testName.rc", "0") === false)
+                err_msg("Couldn't create a file", $outputFileErr);
+        }
+    
+        if (!file_exists("$testName.out")) {
+            if (file_put_contents("$testName.out", "") === false)
+                err_msg("Couldn't create a file", $outputFileErr);
+        }
+    
+    /* ############               END OF CREATING FILES            ##############*/
+
+        if ($parseOnly)
+        {
+            /*$resultArr[] = */parse_only($testName);
+        } else if ($intOnly)
+        {
+            //$resultArr[] = intOnly("src");
+        } else
+        {
+            //$resultArr[] = both();
+        }
+    }
+    
+
+?>
