@@ -13,10 +13,10 @@
 
     $jexamxmlFileGiven = false;
     $jexamxmlFile = "/pub/courses/ipp/jexamxml/jexamxml.jar";
+    $jexamxmlOptions = "/pub/courses/ipp/jexamxml/options";
 
     $testsCount = 0;
     $testsFailed = 0;
-    $testsPassed = 0;
 
     // ### Errors
     $wrongParamErr = 10;
@@ -33,19 +33,145 @@
         $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($testDir));
         $testFiles = array();
         foreach ($iterator as $file) {
-            if (preg_match("/.*\.src$/",$file)) {
+            if (preg_match("/.*\.src$/",$file)){
                 $testFiles[] = $file->getPathname();
             }
         }
         return $testFiles;
     }
 
+    function delete_tmp_files($testName){
+        global $outputFileErr;
+
+        if (file_exists("$testName.xml")){
+            if(!unlink("$testName.xml"))    // Delete it, not needed anymore
+                err_msg("The $testName.xml couldn't be deleted", $outputFileErr);
+        }
+        if (file_exists("$testName.diff")){
+            if(!unlink("$testName.diff"))
+                err_msg("The $testName.diff couldn't be deleted", $outputFileErr);
+        }
+    }
+
     function parse_only($testName){
         global $parseFile;
+        global $jexamxmlOptions;
+        global $jexamxmlFile;
+        global $testsFailed;
 
-        exec("php7.4 $parseFile < $testName.src > $testName.xml_out", $parseOut, $parseRC);
-        echo ($parseRC);
+        exec("php7.4 '$parseFile' < '$testName.src' > '$testName.xml'", $parseOut, $parseRC);
+        
+        if ($parseRC != 0){     // Parser ended with error
+
+            delete_tmp_files($testName);
+
+            $referenceRC = file_get_contents("$testName.rc");
+
+            if ($referenceRC != $parseRC){     // Failed test
+                $testsFailed++;
+                $didPassed = false;
+                
+                $diffRC = "Reference RC = $referenceRC ... Parser RC = $parseRC";
+                $resultArray = array("testName" => $testName, "passed" => $didPassed, "diff" => $diffRC);
+            }
+            else {      // Passed test
+                $didPassed = true;
+                $resultArray = array("testName" => $testName, "passed" => $didPassed);
+            }
+        }
+        else {      // Parser succeded
+            if (file_exists("$testName.out")){
+                $diffOut = exec(
+                    "java -jar '$jexamxmlFile' '$testName.out' '$testName.xml' '$testName.diff' -D '$jexamxmlOptions'",
+                    $jexamxmlOutput,
+                    $jexamxmlRC);
+                }
+
+                if ($jexamxmlRC == 0){
+                    $didPassed = true;
+                    $resultArray = array("testName" => $testName, "jexamxmlRC" => $jexamxmlRC, "passed" => $didPassed,
+                        "errMsg" => $diffOut);
+                }
+                else {      // Something went wrong
+                
+                    $testsFailed++;
+                    $didPassed = false;
+                    if (file_exists("$testName.diff")){
+                        $diffXml = file_get_contents("$testName.diff");
+                    }
+
+                    if ($jexamxmlRC == 1){
+                        $diffXml = str_replace("Changed Element:old","Reference file:", $diffXml);
+                        $diffXml = str_replace("Changed Element:new","Output file:", $diffXml);
+                        $resultArray = array("testName" => $testName, "jexamxmlRC" => $jexamxmlRC, "passed" => $didPassed,
+                            "errMsg" => $diffOut, "diff" => $diffXml);
+                    }
+                    else {      // JExamXML error
+                        $resultArray = array("testName" => $testName, "jexamxmlRC" => $jexamxmlRC,
+                            "passed" => $didPassed, "errMsg" => $diffOut);
+                    }
+                }
+                delete_tmp_files($testName);
+        }
+        return $resultArray;
     }
+
+    function both($testName){
+        global $parseFile;
+        global $testsFailed;
+
+        exec("php7.4 '$parseFile' < '$testName.src' > '$testName.xml'", $parseOut, $parseRC);
+
+        if ($parseRC == 0){     // Parsed
+            $resultArray = int_only("xml", $testName);
+        }
+        else {
+            $referenceRC = file_get_contents("$testName.rc");
+
+            if ($referenceRC == $parseRC){      // Passed test
+                $didPassed = true;
+                $resultArray = array("testName" => $testName, "result" => $didPassed);
+            }
+            else {      // Failed test
+                $testsFailed++;
+                $didPassed = false;
+                
+                $diffRC = "Reference RC = $referenceRC, Parse RC = $parseRC";
+                $resultArray = array("testName" => $testName, "result" => $didPassed, "diff" => $diffRC);
+            }
+        }
+        delete_tmp_files($testName);
+        return $resultArray;
+    }
+
+    function int_only($xmlOrSrc, $testName){
+        global $testsFailed;
+        global $intFile;
+
+        exec("python3.8 '$intFile' --source='$testName.$xmlOrSrc' < '$testName.in'", $intOut, $intRC);
+
+        $referenceRC = file_get_contents("$testName.rc");
+        $referenceOut = file_get_contents("$testName.out");
+
+        if (($referenceRC == $intRC) && ($referenceOut == $intOut)){    // Everything's good
+            $didPassed = true;
+            $resultArray = array("testName" => $testName, "result" => $didPassed);
+        }
+        else {      // Failed test
+            $testsFailed++;
+            $didPassed = false;
+
+            if ($referenceRC != $intRC)
+                $diff = "Reference RC = $referenceRC, Interpret RC = $intRC\n";
+            if ($referenceOut != $intOut)
+                $diff .= "\n Reference Out: $referenceOut \n Interpret Out: $intOut";
+            
+            $resultArray = array("testName" => $testName, "result" => $didPassed, "diff" => $diff);
+        }
+        return $resultArray;
+    }
+
+    #############################################              MAIN           #########################################
 
     $longopts  = array(
         "help",    
@@ -148,31 +274,29 @@
     
 
     if ($testDirGiven){
-        $testDir = exec("realpath \"$testDir\"")."/";
+        $testDir = exec("realpath '$testDir'")."/";
         if (!is_dir($testDir))
             err_msg("--directory=<dir> is not a directory", $inputFileErr);
     }
     
     if ($parseFileGiven){
-        $parseFile = exec("realpath \"$parseFile\"")."/";
+        $parseFile = exec("realpath '$parseFile'")."/";
         if (!is_file($parseFile))
             err_msg("--parse-script=<file> is not a file", $inputFileErr);
     }
 
     if ($intFileGiven){
-        $intFile = exec("realpath \"$intFile\"")."/";
+        $intFile = exec("realpath '$intFile'")."/";
         if (!is_file($intFile))
             err_msg("--int-script=<file> is not a file", $inputFileErr);
     }
 
     /* ############               END OF CHECKING ARGUMENTS            ##############*/
 
-    if($recursive)
-    {
+    if($recursive){
         $testFiles = rglob($testDir);
     }
-    else
-    {
+    else {
         $testFiles = glob($testDir . "*.src");
     }
     
@@ -184,16 +308,16 @@
 
         $testName = str_replace(".src", "", $testFile);
     
-        if (!file_exists("$testName.in")) {
+        if (!file_exists("$testName.in")){
             if (file_put_contents("$testName.in", "") === false)
                 err_msg("Couldn't create a file", $outputFileErr);
         }
-        if (!file_exists("$testName.rc")) {
+        if (!file_exists("$testName.rc")){
             if (file_put_contents("$testName.rc", "0") === false)
                 err_msg("Couldn't create a file", $outputFileErr);
         }
     
-        if (!file_exists("$testName.out")) {
+        if (!file_exists("$testName.out")){
             if (file_put_contents("$testName.out", "") === false)
                 err_msg("Couldn't create a file", $outputFileErr);
         }
@@ -201,16 +325,12 @@
     /* ############               END OF CREATING FILES            ##############*/
 
         if ($parseOnly)
-        {
-            /*$resultArr[] = */parse_only($testName);
-        } else if ($intOnly)
-        {
-            //$resultArr[] = intOnly("src");
-        } else
-        {
-            //$resultArr[] = both();
-        }
+            $resultArray[] = parse_only($testName);
+        else if ($intOnly)
+            $resultArray[] = int_only("src", $testName);
+        else
+            $resultArray[] = both($testName);
     }
     
-
+include "html-part.php";
 ?>
