@@ -24,11 +24,21 @@
     $outputFileErr = 12;
     // ##########
 
+    /**
+     * Prints the error message on stderr
+     * @param $message: error message
+     * @param $rc: exit code
+     */
     function err_msg($message, $rc){
         fwrite(STDERR, "Error: $message\n");
         exit($rc);
     }
 
+    /**
+     * Goes through directories and search for the *.src files
+     * @param $testDir tests directory
+     * @return returns all of the *.src files in array
+     */
     function rglob($testDir){
         $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($testDir));
         $testFiles = array();
@@ -40,6 +50,10 @@
         return $testFiles;
     }
 
+    /**
+     * Deletes the temporary files, created by this script
+     * @param $testName name of the test
+     */
     function delete_tmp_files($testName){
         global $outputFileErr;
 
@@ -53,6 +67,11 @@
         }
     }
 
+    /**
+     * Run the test for only for the parser
+     * @param $testName name of the test
+     * @return returns test's output
+     */
     function parse_only($testName){
         global $parseFile;
         global $jexamxmlOptions;
@@ -116,6 +135,11 @@
         return $resultArray;
     }
 
+    /**
+     * Run the test for both the parser and the interpreter
+     * @param $testName name of the test
+     * @return returns test's output
+     */
     function both($testName){
         global $parseFile;
         global $testsFailed;
@@ -144,11 +168,18 @@
         return $resultArray;
     }
 
+    /**
+     * Run the test only for the interpreter
+     * @param $xmlOrSrc defines the postfix of the file, can be either "src" or "xml"
+     * @param $testName name of the test
+     * @return returns test's output
+     */
     function int_only($xmlOrSrc, $testName){
         global $testsFailed;
         global $intFile;
 
         exec("python3.8 '$intFile' --source='$testName.$xmlOrSrc' < '$testName.in'", $intOut, $intRC);
+        $intOut = implode("\n",$intOut);
 
         $referenceRC = file_get_contents("$testName.rc");
         $referenceOut = file_get_contents("$testName.out");
