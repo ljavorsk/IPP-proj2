@@ -11,7 +11,6 @@
     $testDirGiven = false;
     $testDir = "./";
 
-    $jexamxmlFileGiven = false;
     $jexamxmlFile = "/pub/courses/ipp/jexamxml/jexamxml.jar";
     $jexamxmlOptions = "/pub/courses/ipp/jexamxml/options";
 
@@ -43,9 +42,8 @@
         $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($testDir));
         $testFiles = array();
         foreach ($iterator as $file) {
-            if (preg_match("/.*\.src$/",$file)){
+            if (preg_match("/.*\.src$/",$file))
                 $testFiles[] = $file->getPathname();
-            }
         }
         return $testFiles;
     }
@@ -286,7 +284,6 @@
                 $intOnly = true;
                 break;
             case "--jexamxlm":
-                $jexamxmlFileGiven = true;
                 $jexamxmlFile = $myArgs["jexamxml"];
                 break;
             default:
