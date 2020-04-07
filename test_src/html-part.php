@@ -113,15 +113,26 @@
     <header class="head-box flexed">
     <h3> Results from test.php </h3>
     <p class="res" style="margin-top: 10px;"> Total tests: <?=$testsCount?></p>
+    
     <?php if ($testsFailed > 0): ?>
         <p class="res"> Failed: <em><?= $testsFailed?></em>/<?=$testsCount?></p> 
     <?php else: ?>
         <p class="res"> Failed: <?= $testsFailed?>/<?=$testsCount?></p> 
     <?php endif ?>
+
     <?php if ($testsCount - $testsFailed > 0): ?>
         <p class="res" style="margin-bottom: 15px;"> Passed: <em style="color: #3dd447;"><?= $testsCount - $testsFailed?></em>/<?=$testsCount?></p>
     <?php else: ?>
         <p class="res" style="margin-bottom: 15px;"> Passed: <?= $testsCount - $testsFailed?>/<?=$testsCount?></p> 
+    <?php endif ?>
+
+    <?php $successRate = round(($testsCount - $testsFailed) / $testsCount * 100, 2);
+    if ($successRate < 30): ?>
+        <p class="res" style="margin-top: 10px;"> Working on : <em style="color: #ed2b2b;"><?=$successRate?></em>%</p>
+    <?php elseif ($successRate < 70): ?>
+        <p class="res" style="margin-top: 10px;"> Working on : <em style="color: #ebce42;"><?=$successRate?></em>%</p>
+    <?php else: ?>
+        <p class="res" style="margin-top: 10px;"> Working on : <em style="color: #3dd447;"><?=$successRate?></em>%</p>
     <?php endif ?>
     </header>
 </div>
