@@ -152,14 +152,14 @@
 
             if ($referenceRC == $parseRC){      // Passed test
                 $didPassed = true;
-                $resultArray = array("testName" => $testName, "result" => $didPassed);
+                $resultArray = array("testName" => $testName, "passed" => $didPassed);
             }
             else {      // Failed test
                 $testsFailed++;
                 $didPassed = false;
                 
                 $diffRC = "Reference RC = $referenceRC, Parse RC = $parseRC";
-                $resultArray = array("testName" => $testName, "result" => $didPassed, "diff" => $diffRC);
+                $resultArray = array("testName" => $testName, "passed" => $didPassed, "diff" => $diffRC);
             }
         }
         delete_tmp_files($testName);
@@ -184,7 +184,7 @@
 
         if (($referenceRC == $intRC) && ($referenceOut == $intOut)){    // Everything's good
             $didPassed = true;
-            $resultArray = array("testName" => $testName, "result" => $didPassed);
+            $resultArray = array("testName" => $testName, "passed" => $didPassed);
         }
         else {      // Failed test
             $testsFailed++;
@@ -195,7 +195,7 @@
             if ($referenceOut != $intOut)
                 $diff .= "\n Reference Out: $referenceOut \n Interpret Out: $intOut";
             
-            $resultArray = array("testName" => $testName, "result" => $didPassed, "diff" => $diff);
+            $resultArray = array("testName" => $testName, "passed" => $didPassed, "diff" => $diff);
         }
         return $resultArray;
     }
@@ -360,5 +360,5 @@
             $resultArray[] = both($testName);
     }
     
-include "html-part.php";
+include "./test_src/html-part.php";
 ?>
