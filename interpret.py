@@ -39,8 +39,13 @@ class Interpret(object):
         self.labels = UniqueDict(self.labels)
         self.varStack = []
         self.instPointerStack = None
+        self.output = None
 
-    def get_all_labels(self):
+    def set_all_labels(self):
+        """
+        Checking all the label if they are valid and unique, and stores them to the label array
+        """
+
         for inst in self.program:
             if (inst.attrib["opcode"].upper() == "LABEL"):
                 for arg in inst:
@@ -50,7 +55,11 @@ class Interpret(object):
                         err_msg("Label '{}' in instruction {} is being redefined".format(arg.text, inst.attrib), SemanticErr)
 
     def interpret_the_language(self):
-        self.get_all_labels()
+        """
+        Interprets the language
+        """
+
+        self.set_all_labels()
         self.instructPointer = 0
 
         while self.instructPointer < len(self.program):
@@ -63,9 +72,20 @@ class Interpret(object):
 
             self.instructPointer += 1
         
+        # Write everything to stdout
+        if (self.output != None):
+            for out in self.output:
+                print (out, end='')
+        
     def do_instruction(self, inst):
+        """
+        Perform the instruction
+        """
 
         def var_arg(inst, whatArg, is_symb=False):
+            """
+            Returns the type and value of the arg <var>
+            """
             
             for arg in inst:
                 if (arg.tag == whatArg):
@@ -83,6 +103,9 @@ class Interpret(object):
             return None
 
         def symb_arg(inst, whatArg):
+            """
+            Returns the type and value of the arg <symb>
+            """
             
             var = var_arg(inst, whatArg, is_symb=True)
             if (var is not None):
@@ -95,6 +118,10 @@ class Interpret(object):
             err_msg("The <symb> value is not valid in {} argument".format(arg), UnexpectedXMLStructureErr)
 
         def label_arg(inst, whatArg):
+            """
+            Returns the valid label from arg <label>
+            """
+
             for arg in inst:
                 if whatArg == arg.tag:
                     if arg.attrib["type"] != "label":
@@ -104,6 +131,10 @@ class Interpret(object):
             return None
         
         def search_in_frame(frameType, frameName):
+            """
+            Looks for the variable in frames, and if it's found returns the frame
+            """
+
             if (frameType == "GF"):
                 try:
                     self.GF[frameName]
@@ -131,26 +162,38 @@ class Interpret(object):
                     err_msg("Temporary frame with variable name '{}' doesn't exists", VariableDoesntExistsErr)
                 return self.TF
 
-        def get_var(arg):
+        def get_var(arg, isType=False):
+            """
+            Returns the type and value of the arg <var>
+            """
+
             frame, name = get_frame_and_name(arg)
             varsFrame = search_in_frame(frame, name)
-            
 
             argType = varsFrame[name]['type']
             argValue = varsFrame[name]['value']
 
+            if ((argValue is None or argType is None) and isType == False):
+                err_msg("Uninitialized variable in arg: {}. In instruction: {}".format(arg.tag, inst.attrib), MissingValueErr)
             return argType, argValue
 
-        def get_type_value(arg, typeOfArg):
+        def get_type_value(arg, typeOfArg, isType=False):
+            """
+            Returns the type and value of the argument <symb>
+            """
+            
             if (typeOfArg == "var"):
-                
-                typeOfArg, argValue = get_var(arg)
+                typeOfArg, argValue = get_var(arg, isType)
             else:
                 argValue = arg.text
 
             return typeOfArg, argValue
 
         def get_frame_and_name(arg):
+            """
+            Returns the frame and name of the argument
+            """
+
             arg_split = arg.text.split('@', 1)
             frame = arg_split[0]
             name = arg_split[1]
@@ -158,6 +201,10 @@ class Interpret(object):
             return (frame, name)
 
         def get_var_symb_symb():
+            """
+            Returns the crusial variables needed in <var><symb><symb> instructions
+            """
+
             arg1 = var_arg(inst, "arg1")
             
             frame, name = get_frame_and_name(arg1)
@@ -175,6 +222,10 @@ class Interpret(object):
             return name, varsFrame, arg2Type, arg2Value, arg3Type, arg3Value
 
         def aritmetic_operations():
+            """
+            Do setup for aritmetic operations
+            """
+
             name, varsFrame, arg2Type, arg2Value, arg3Type, arg3Value = get_var_symb_symb()
 
             if (arg2Type is None or arg3Type is None):
@@ -193,11 +244,19 @@ class Interpret(object):
 
         
         def convert_unicode_values_in_string(string):
+            """
+            Converts every unicode sequence in string to the coresponding character
+            """
+
             for unicode_sequence in re.findall('\\\\[0-9]{3}', string):
                 string = string.replace(unicode_sequence, chr(int(unicode_sequence[1:])))
             return string
 
         def defvar():
+            """
+            Defines the arg1 variable
+            """
+
             arg1 = var_arg(inst, "arg1")
 
             frame, name = get_frame_and_name(arg1)
@@ -225,9 +284,11 @@ class Interpret(object):
                 else:
                     err_msg("Temporary frame with name '{}' is not created".format(name), FrameDoesntExistsErr)
 
-            return ('\nDoing {}.'.format(inst.attrib))
-
         def move():
+            """
+            Copies the arg2 value to the arg1 variable
+            """
+
             arg1 = var_arg(inst, "arg1")
 
             frame, name = get_frame_and_name(arg1)
@@ -249,6 +310,10 @@ class Interpret(object):
             varsFrame[name] = argStruct
 
         def add():
+            """
+            Performs add on arg2 and arg3 values and stores it to arg1 variable
+            """
+
             arg2Value, arg3Value, varsFrame, name = aritmetic_operations()
 
             resultOfAdition = {'type': 'int', 'value': arg2Value + arg3Value}
@@ -256,6 +321,10 @@ class Interpret(object):
             varsFrame[name] = resultOfAdition
 
         def mul():
+            """
+            Performs mul on arg2 and arg3 values and stores it to arg1 variable
+            """
+
             arg2Value, arg3Value, varsFrame, name = aritmetic_operations()
 
             resultOfAdition = {'type': 'int', 'value': arg2Value * arg3Value}
@@ -263,6 +332,10 @@ class Interpret(object):
             varsFrame[name] = resultOfAdition
 
         def sub():
+            """
+            Performs sub on arg2 and arg3 values and stores it to arg1 variable
+            """
+
             arg2Value, arg3Value, varsFrame, name = aritmetic_operations()
 
             resultOfAdition = {'type': 'int', 'value': arg2Value - arg3Value}
@@ -270,6 +343,10 @@ class Interpret(object):
             varsFrame[name] = resultOfAdition
 
         def idiv():
+            """
+            Performs idiv on arg2 and arg3 values and stores it to arg1 variable
+            """
+
             arg2Value, arg3Value, varsFrame, name = aritmetic_operations()
 
             if (arg3Value == 0):
@@ -280,6 +357,10 @@ class Interpret(object):
             varsFrame[name] = resultOfAdition
 
         def write():
+            """
+            Writes the arg1 value to the output array, which is printed at the end
+            """
+
             arg1Type, arg1 = symb_arg(inst, "arg1")
 
             if (arg1Type == "var"):
@@ -292,50 +373,56 @@ class Interpret(object):
             if (arg1Value == "nil" and arg1Type == "nil"):
                 arg1Value = ""
 
-            if (arg1Type == "raw_value"):
-                print(arg1Value, end='')
-            elif (type(arg1Value) == str):
-                print(convert_unicode_values_in_string(arg1Value), end='')
+            if (self.output == None):
+                self.output = []
+
+            if (type(arg1Value) == str):
+                self.output.append(convert_unicode_values_in_string(arg1Value))
             else:
-                print(arg1Value, end='')
+                self.output.append(arg1Value)
 
-            return f'\nDoing {inst.attrib}.'
 
-        def read():
+        def _read():
+            """
+            Reads from input and stores it if
+            1) the arg2 type is same as readed
+            Stores it to the arg1 variable
+            If anything went wrong nil@nil is stored
+            """
+
             arg1 = var_arg(inst, "arg1")
 
             frame, name = get_frame_and_name(arg1)
             varsFrame = search_in_frame(frame, name)
 
-            readValue = ""
             readType = None
 
             if (self.input is None):
                 try:
                     readValue = input()
-                except EOFError:
-                    readValue = ""
+                except EOFError:  
+                    readValue = None
             else:
                 if type(self.input) != list:
                     self.input = self.input.splitlines()
 
                 if type(self.input) == list:
                     if len(self.input) == 0:
-                        readValue = ""
+                        readValue = None
                     else:
                         readValue = self.input.pop(0)
             for arg in inst:
                 if (arg.tag == "arg2"):
                     defaultValue = "nil"
                     defaultType = "nil"
+
                     if (arg.attrib["type"] != "type"):
                         err_msg("Argument type in argument {} have to be 'type'... Instruction: {}".format(arg.attrib, inst.attrib))
-
-                    if (arg.text == "string"):
-                        readType = "raw_value"
-                        # if (not re.match('^([^\\\\\#\s]|(\\\\\d{3}))*$', readValue)):   # Not supported string value
-                        #     readValue = defaultValue
-                        #     readType = defaultType
+                    if (readValue is None):
+                        readValue = defaultValue
+                        readType = defaultType
+                    elif (arg.text == "string"):
+                        readType = "string"
                     elif(arg.text == "int"):
                         readType = "int"
                         if (not re.match('^(\+|-|)[0-9]+$', readValue)):        # Not supported int value
@@ -347,7 +434,7 @@ class Interpret(object):
                         if (not re.match('^(TRUE)$', readValue)):
                             readValue = "false"
                         else:
-                            readValue = "true"
+                            readValue = "true"  
                     else:
                         readValue = defaultValue
                         readType = defaultType
@@ -356,9 +443,17 @@ class Interpret(object):
             varsFrame[name] = argStruct
 
         def create_frame():
+            """
+            Creates the TF frame
+            """
+
             self.TF = {}
 
         def push_frame():
+            """
+            Pushs the TF frame and stores it to the LF
+            """
+
             if (self.TF is None):
                 err_msg("The temporary frame doesn't exists", FrameDoesntExistsErr)
 
@@ -370,6 +465,10 @@ class Interpret(object):
             self.LFTop = self.LFStack[len(self.LFStack) -1]
 
         def pop_frame():
+            """
+            Pops the LF frame and stores it to the TF
+            """
+
             if (self.LFStack is None):
                 err_msg("There is no local frame left to be poped", FrameDoesntExistsErr)
             if (len(self.LFStack) > 0):
@@ -382,10 +481,18 @@ class Interpret(object):
                 err_msg("There is no local frame left to be poped", FrameDoesntExistsErr)
 
         def label():
+            """
+            Does nothing, because the label are already done at the beginning
+            """
+
             # Already done in the beginnig
             return
         
         def jump():
+            """
+            Perform jump in instruction counter
+            """
+
             jumpingOn = label_arg(inst, "arg1")
 
             if (jumpingOn in self.labels.keys()):
@@ -398,6 +505,10 @@ class Interpret(object):
                 err_msg("Undefined label with name '{}'".format(jumpingOn), SemanticErr)
 
         def jumpifeq():
+            """
+            Perform jump in instruction counter if arg2 and arg3 are equal
+            """
+
             jumpingOn = label_arg(inst, "arg1")
 
             if (jumpingOn in self.labels.keys()):
@@ -417,16 +528,10 @@ class Interpret(object):
             if (arg2Type is None or arg3Type is None):
                 err_msg("Value in one or more instruction arguments are not defined, Instruction: {}".format(inst.attrib), MissingValueErr)
 
-            if (arg2Type == "raw_value"):
-                arg2Type = "string"
-
-            if (arg3Type == "raw_value"):
-                arg3Type = "string"
-            
-            if (arg2Type != arg3Type and arg2Type != "nil" and arg3Type != "nil"):
-                err_msg("Operands cannot be compared in instruction '{}'".format(inst.attrib), WrongOperandTypeErr)
-            elif (arg2Type == "nil" and arg3Type == "nil"):
-                doJump = True
+            # Convert
+            if (arg2Type == "string" and arg3Type == "string"):
+                arg2Value = convert_unicode_values_in_string(arg2Value)
+                arg3Value = convert_unicode_values_in_string(arg3Value)
             elif (arg2Type == "int" and arg3Type == "int"):
                 try:
                     arg2Value = int(arg2Value)
@@ -434,7 +539,10 @@ class Interpret(object):
                 except TypeError:
                     err_msg("Cannot convert value to int type in instruction {}".format(inst.attrib), InternalErr)
 
-                doJump = arg2Value == arg3Value
+            if (arg2Type != arg3Type and arg2Type != "nil" and arg3Type != "nil"):
+                err_msg("Operands cannot be compared in instruction '{}'".format(inst.attrib), WrongOperandTypeErr)
+            elif (arg2Type == "nil" and arg3Type == "nil"):
+                doJump = True
             else:
                 doJump = arg2Value == arg3Value
 
@@ -444,6 +552,10 @@ class Interpret(object):
                 return self.instructPointer
 
         def jumpifneq():
+            """
+            Perform jump in instruction counter if arg2 and arg3 are not equal
+            """
+
             jumpingOn = label_arg(inst, "arg1")
             doJump = jumpifeq()
             jumpingOn = int(self.labels[jumpingOn]) - 1
@@ -455,26 +567,30 @@ class Interpret(object):
                 return jumpingOn
 
         def _type():
+            """
+            Stores the type of the arg2 to the arg1 variable
+            """
+
             arg1 = var_arg(inst, "arg1")    
 
             frame, name = get_frame_and_name(arg1)
-
             varsFrame = search_in_frame(frame, name)  
 
             arg2Type, arg2Body = symb_arg(inst, "arg2")
-            arg2Type, arg2Value = get_type_value(arg2Body, arg2Type)
+            arg2Type, arg2Value = get_type_value(arg2Body, arg2Type, isType=True)
 
             if arg2Type is None:
                 arg2Type = ""
 
-            arg2Type = arg2Type.strip()
-            if arg2Type == "raw_string":
-                arg2Type = "string"
             argStruct = {'type': 'string', 'value': arg2Type}
-
             varsFrame[name] = argStruct
 
         def _exit():
+            """
+            Exits the program with arg1 exit code
+            Prints the output which should be printed before exiting
+            """
+
             arg1Type, arg1Body = symb_arg(inst, "arg1")
             arg1Type, arg1Value = get_type_value(arg1Body, arg1Type)
 
@@ -489,12 +605,20 @@ class Interpret(object):
             except TypeError:
                 err_msg("Cannot convert value to int type in instruction {}".format(inst.attrib), InternalErr)
 
-            if (0 < exitCode <= 49):
+            if (0 <= exitCode <= 49):
+                # Write if anything should be writen before exit
+                if (self.output is not None):
+                    for out in self.output:
+                        print (out, end='')
                 sys.exit(exitCode)
             else:
                 err_msg("Exit code cannot be lower than 0 nor bigger than 49", WrongOperandValue)
 
         def pushs():
+            """
+            Push the arg1 <symb> to the varStack
+            """
+
             arg1Type, arg1Body = symb_arg(inst, "arg1")
             arg1Type, arg1Value = get_type_value(arg1Body, arg1Type)
 
@@ -505,6 +629,10 @@ class Interpret(object):
             self.varStack.append(varToBePushed)
 
         def pops():
+            """
+            Pops the arg1 <symb> from the varStack
+            """
+
             if (len(self.varStack) < 1):
                 err_msg("Empty stack cannot be poped in instruction {}".format(inst.attrib), MissingValueErr)
             arg1 = var_arg(inst, "arg1")
@@ -516,6 +644,10 @@ class Interpret(object):
             varsFrame[name] = varToBePoped
 
         def int2char():
+            """
+            Convert the int from arg2 value to the string and stores it to the arg1 variable
+            """
+
             arg1 = var_arg(inst, "arg1")
 
             frame, name = get_frame_and_name(arg1)
@@ -524,10 +656,12 @@ class Interpret(object):
             arg2Type, arg2Body = symb_arg(inst, "arg2")
             arg2Type, arg2Value = get_type_value(arg2Body, arg2Type)
 
-            if (arg2Type != "int"):
-                err_msg("Exit value can be only 'int' type", WrongOperandTypeErr)
             if (arg2Value is None):
                 err_msg("Uninitialized value of integer in instruction {}".format(inst.attrib), MissingValueErr)
+
+            if (arg2Type != "int"):
+                err_msg("arg2 value can be only 'int' type", WrongOperandTypeErr)
+            
             try:
                 arg2Value = int(arg2Value)
             except TypeError:
@@ -542,17 +676,27 @@ class Interpret(object):
             varsFrame[name] = argStruct
 
         def stri2int():
+            """
+            Convert the string from arg2 value at arg3 index to the int and stores it to the arg1 variable
+            """
+
             name, varsFrame, arg2Type, arg2Value, arg3Type, arg3Value = get_var_symb_symb()
 
             if (arg2Type == "string"):
                 arg2Value = convert_unicode_values_in_string(arg2Value)
-            elif (arg2Type == "raw_value"):
-                pass
             else:
                 err_msg("The second argument is not a string in {}".format(inst.attrib), WrongOperandTypeErr)
 
             if (arg3Type != "int"):
                 err_msg("The third argument is not an int in {}".format(inst.attrib), WrongOperandTypeErr)
+
+            try:
+                arg3Value = int(arg3Value)
+            except TypeError:
+                err_msg("Cannot convert value to int type in instruction {}".format(inst.attrib), InternalErr)
+
+            if (int(arg3Value) < 0):
+                err_msg("Negative number in index in instruction {}".format(inst.attrib), StringOperationErr)
             
             try:
                 argStruct = {'type': 'int', 'value': ord(arg2Value[arg3Value])}
@@ -561,12 +705,20 @@ class Interpret(object):
             varsFrame[name] = argStruct
 
         def _return():
+            """
+            Returns to the previous CALL instruction
+            """
+
             if (self.instPointerStack is None or len(self.instPointerStack) < 1):
                 err_msg("Return called without previos CALL instruction", MissingValueErr)
             else:
                 return self.instPointerStack.pop()
 
         def call():
+            """
+            Jumping on the arg1 label, and storing the instruction pointer of the CALL for RETURN inst
+            """
+
             callingLabel = label_arg(inst, "arg1")
 
             if (callingLabel in self.labels.keys()):
@@ -583,6 +735,10 @@ class Interpret(object):
                 err_msg("Undefined label in CALL instruction... Instruction: {}".format(inst.attrib), SemanticErr)
 
         def _break():
+            """
+            Prints the current instruction, all frames and how many instructions were executed already
+            """
+
             print("Break instruction executed as {}. in order".format(inst.attrib["order"]),file=sys.stderr)
             print("GF: {}".format(self.GF),file=sys.stderr)
             print("LF: {}".format(self.LFTop),file=sys.stderr)
@@ -590,20 +746,26 @@ class Interpret(object):
             print("Instructions already executed: {}".format(inst.attrib["order"] - 1),file=sys.stderr)
 
         def dprint():
+            """
+            Prints the value of arg1 to the stderr
+            """
+
             arg1Type, arg1Body = symb_arg(inst, "arg1")
             arg1Type, arg1Value = get_type_value(arg1Body, arg1Type)
 
             if (arg1Type == "nil" and arg1Value == "nil"):
                 arg1Value = ""
 
-            if arg1Type == "raw_value":
-                print(arg1Value, end='', file=sys.stderr)
-            elif type(arg1Value) == str:
+            if (type(arg1Value) == str):
                 print(convert_unicode_values_in_string(arg1Value), end='', file=sys.stderr)
             else:
-                print(arg1Value, end='')
+                print(arg1Value, end='', file=sys.stderr)
 
         def strlen():
+            """
+            Stores the length of string in arg2 to the arg1 variable
+            """
+
             arg1 = var_arg(inst, "arg1")
 
             frame, name = get_frame_and_name(arg1)
@@ -614,8 +776,6 @@ class Interpret(object):
 
             if (arg2Type == "string"):
                 arg2Value = convert_unicode_values_in_string(arg2Value)
-            elif (arg2Type == "raw_value"):
-                pass
             else:
                 err_msg("The second argument is not a string in {}".format(inst.attrib), WrongOperandTypeErr)
 
@@ -624,6 +784,10 @@ class Interpret(object):
             varsFrame[name] = argStruct
 
         def _not():
+            """
+            Performs NOT operation on arg2 bool value and stores it to arg1 variable
+            """
+
             arg1 = var_arg(inst, "arg1")
 
             frame, name = get_frame_and_name(arg1)
@@ -643,13 +807,11 @@ class Interpret(object):
                 varsFrame[name] = argStruct
 
         def relation_operations_setup():
+            """
+            Makes a setup for relation operations
+            """
+
             name, varsFrame, arg2Type, arg2Value, arg3Type, arg3Value = get_var_symb_symb()
-
-            if (arg2Type == "raw_value"):
-                arg2Type = "string"
-
-            if (arg3Type == "raw_value"):
-                arg3Type = "string"
 
             if (arg2Type == "int" and arg3Type == "int"):
                 try:
@@ -661,6 +823,10 @@ class Interpret(object):
             return name, varsFrame, arg2Type, arg2Value, arg3Type, arg3Value
 
         def make_correct_form_of_result(result):
+            """
+            Convert the bool result value to the string result
+            """
+
             if (result):
                 result = "true"
             else:
@@ -669,6 +835,9 @@ class Interpret(object):
             return result
 
         def lt():
+            """
+            Performs the 'less than' (<) operation between arg2 and arg3... stores the result to arg1 variable
+            """
             
             name, varsFrame, arg2Type, arg2Value, arg3Type, arg3Value = relation_operations_setup()
             result = None
@@ -692,6 +861,9 @@ class Interpret(object):
             varsFrame[name] = argStruct
 
         def gt():
+            """
+            Performs the 'greater than' (>) operation between arg2 and arg3... stores the result to arg1 variable
+            """
             
             name, varsFrame, arg2Type, arg2Value, arg3Type, arg3Value = relation_operations_setup()
             result = None
@@ -715,6 +887,9 @@ class Interpret(object):
             varsFrame[name] = argStruct
 
         def eq():
+            """
+            Performs the 'equal' (==) operation between arg2 and arg3... stores the result to arg1 variable
+            """
             
             name, varsFrame, arg2Type, arg2Value, arg3Type, arg3Value = relation_operations_setup()
             result = None
@@ -745,6 +920,9 @@ class Interpret(object):
             varsFrame[name] = argStruct
 
         def _and():
+            """
+            Performs the 'logical AND' (&&) operation between arg2 and arg3... stores the result to arg1 variable
+            """
 
             name, varsFrame, arg2Type, arg2Value, arg3Type, arg3Value = get_var_symb_symb()
             result = None
@@ -762,6 +940,9 @@ class Interpret(object):
             varsFrame[name] = argStruct
 
         def _or():
+            """
+            Performs the 'logical OR' (||) operation between arg2 and arg3... stores the result to arg1 variable
+            """
 
             name, varsFrame, arg2Type, arg2Value, arg3Type, arg3Value = get_var_symb_symb()
             result = None
@@ -779,19 +960,19 @@ class Interpret(object):
             varsFrame[name] = argStruct
 
         def concat():
+            """
+            Concatenate the arg2 and arg3 strings and stores the result to arg1 variable
+            """
+
             name, varsFrame, arg2Type, arg2Value, arg3Type, arg3Value = get_var_symb_symb()
 
             if (arg2Type == "string"):
                 arg2Value = convert_unicode_values_in_string(arg2Value)
-            elif (arg2Type == "raw_value"):
-                pass
             else:
                 err_msg("The second argument is not a string in {}".format(inst.attrib), WrongOperandTypeErr)
 
             if (arg3Type == "string"):
                 arg3Value = convert_unicode_values_in_string(arg3Value)
-            elif (arg3Type == "raw_value"):
-                pass
             else:
                 err_msg("The third argument is not a string in {}".format(inst.attrib), WrongOperandTypeErr)
 
@@ -799,44 +980,52 @@ class Interpret(object):
             varsFrame[name] = argStruct
 
         def getchar():
+            """
+            Get char from arg2 string on arg3 index and stores it to arg1 variable
+            """
+
             name, varsFrame, arg2Type, arg2Value, arg3Type, arg3Value = get_var_symb_symb()
 
             if (arg2Type == "string"):
                 arg2Value = convert_unicode_values_in_string(arg2Value)
-            elif (arg2Type == "raw_value"):
-                pass
             else:
                 err_msg("The second argument is not a string in {}".format(inst.attrib), WrongOperandTypeErr)
 
             if (arg3Type != "int"):
                 err_msg("The third argument is not an int in {}".format(inst.attrib), WrongOperandTypeErr)
-
+            if (int(arg3Value) < 0):
+                err_msg("Negative number in index in instruction {}".format(inst.attrib), StringOperationErr)
             try:
-                argStruct = {'type': 'string', 'value': arg2Value + arg3Value}
-            except:
+                argStruct = {'type': 'string', 'value': arg2Value[int(arg3Value)]}
+            except IndexError:
                 err_msg("GETCHAR is out of the string index in instruction {}".format(inst.attrib), StringOperationErr)
             varsFrame[name] = argStruct
 
         def setchar():
+            """
+            Set char to agr1 string from arg3 on arg2 index
+            """
+
             name, varsFrame, arg2Type, arg2Value, arg3Type, arg3Value = get_var_symb_symb()
 
             arg1Type = varsFrame[name]["type"]
             arg1Value = varsFrame[name]["value"]
 
+            if (arg1Type is None or arg1Value is None):
+                err_msg("Uninitialized variadble in arg: arg1. In instruction: {}".format(inst.attrib), MissingValueErr)
+
             if (arg1Type == "string"):
                 arg1Value = convert_unicode_values_in_string(arg1Value)
-            elif (arg1Type == "raw_value"):
-                pass
             else:
                 err_msg("The first argument is not a string in {}".format(inst.attrib), WrongOperandTypeErr)
 
             if (arg2Type != "int"):
                 err_msg("The second argument is not an int in {}".format(inst.attrib), WrongOperandTypeErr)
+            if (int(arg2Value) < 0):
+                err_msg("Negative number in index in instruction {}".format(inst.attrib), StringOperationErr)
 
             if (arg3Type == "string"):
                 arg3Value = convert_unicode_values_in_string(arg3Value)
-            elif (arg3Type == "raw_value"):
-                pass
             else:
                 err_msg("The third argument is not a string in {}".format(inst.attrib), WrongOperandTypeErr)
 
@@ -874,7 +1063,7 @@ class Interpret(object):
             # 2 arguments
             "MOVE": move,
             "INT2CHAR": int2char,
-            "READ": read,
+            "READ": _read,
             "STRLEN": strlen,
             "TYPE": _type,
             "NOT": _not,
